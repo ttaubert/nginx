@@ -29,7 +29,7 @@ ssize_t ngx_ssl_write(ngx_connection_t *c, u_char *data, size_t size);
 ngx_chain_t * ngx_ssl_send_chain(ngx_connection_t *c, ngx_chain_t *in,
     off_t limit);
 
-ngx_int_t ngx_ssl_set_version_range(ngx_ssl_t *ssl, ngx_uint_t protocols);
+ngx_int_t ngx_nss_set_version_range(ngx_ssl_t *ssl, ngx_uint_t protocols);
 
 typedef struct {
     ngx_str_t        certdb;
@@ -155,8 +155,8 @@ ngx_ssl_create(ngx_ssl_t *ssl, ngx_uint_t protocols, void *data)
         return NGX_ERROR;
     }
 
-    if (ngx_ssl_set_version_range(ssl, protocols) != NGX_OK) {
-        ngx_ssl_error(NGX_LOG_ALERT, ssl->log, 0, "ngx_ssl_set_version_range() failed");
+    if (ngx_nss_set_version_range(ssl, protocols) != NGX_OK) {
+        ngx_ssl_error(NGX_LOG_ALERT, ssl->log, 0, "ngx_nss_set_version_range() failed");
         return NGX_ERROR;
     }
 
@@ -165,7 +165,8 @@ ngx_ssl_create(ngx_ssl_t *ssl, ngx_uint_t protocols, void *data)
     return NGX_OK;
 }
 
-ngx_int_t ngx_ssl_set_version_range(ngx_ssl_t *ssl, ngx_uint_t protocols)
+ngx_int_t
+ngx_nss_set_version_range(ngx_ssl_t *ssl, ngx_uint_t protocols)
 {
     SSLVersionRange versions = { SSL_LIBRARY_VERSION_TLS_1_3, 0 };
 
@@ -274,29 +275,6 @@ ngx_ssl_certificate(ngx_conf_t *cf, ngx_ssl_t *ssl, ngx_str_t *cert,
 
     SECKEY_DestroyPrivateKey(nssKey);
     CERT_DestroyCertificate(nssCert);
-
-    return NGX_OK;
-}
-
-// Set available cipher suites.
-ngx_int_t ngx_ssl_ciphers(ngx_conf_t *cf, ngx_ssl_t *ssl, ngx_str_t *ciphers)
-{
-    printf(" >>> ngx_ssl_ciphers [done]\n");
-
-    // Disable all ciphers.
-    const PRUint16 *cipherSuites = SSL_ImplementedCiphers;
-    for (int i = 0; i < SSL_NumImplementedCiphers; i++) {
-        PRUint16 suite = cipherSuites[i];
-        if (SSL_CipherPrefSet(ssl->ctx, suite, SSL_NOT_ALLOWED) != SECSuccess) {
-            ngx_ssl_error(NGX_LOG_ALERT, ssl->log, 0, "Disabling suite '%d' failed", suite);
-        }
-    }
-
-    // Enable a single cipher.
-    if (SSL_CipherPrefSet(ssl->ctx, TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256, SSL_ALLOWED) != SECSuccess) {
-        ngx_ssl_error(NGX_LOG_ALERT, ssl->log, 0, "SSL_CipherPrefSetDefault(TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256) failed");
-        return NGX_ERROR;
-    }
 
     return NGX_OK;
 }
