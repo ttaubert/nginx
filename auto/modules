@@ -667,9 +667,8 @@ if [ $HTTP_REWRITE = YES -a $USE_PCRE != DISABLED ]; then
 fi
 
 if [ $HTTP_SSL = YES ]; then
-    #USE_OPENSSL=YES
+    USE_OPENSSL=YES
     have=NGX_HTTP_SSL . auto/have
-    have=NGX_SSL . auto/have
 
     ngx_module_name=ngx_http_ssl_module
     ngx_module_incs=
@@ -915,7 +914,7 @@ if [ $MAIL != NO ]; then
     ngx_module_incs=
 
     if [ $MAIL_SSL = YES ]; then
-        #USE_OPENSSL=YES
+        USE_OPENSSL=YES
         have=NGX_MAIL_SSL . auto/have
 
         ngx_module_name=ngx_mail_ssl_module
@@ -997,7 +996,7 @@ if [ $STREAM != NO ]; then
     ngx_module_incs=
 
     if [ $STREAM_SSL = YES ]; then
-        #USE_OPENSSL=YES
+        USE_OPENSSL=YES
         have=NGX_STREAM_SSL . auto/have
 
         ngx_module_name=ngx_stream_ssl_module
@@ -1116,33 +1115,19 @@ if test -n "$DYNAMIC_ADDONS"; then
 fi
 
 
-# if [ $USE_OPENSSL = YES ]; then
-#     ngx_module_type=CORE
-#     ngx_module_name=ngx_openssl_module
-#     ngx_module_incs=
-#     ngx_module_deps=src/event/ngx_event_openssl.h
-#     ngx_module_srcs="src/event/ngx_event_openssl.c
-#                      src/event/ngx_event_openssl_stapling.c"
-#     ngx_module_libs=
-#     ngx_module_link=YES
-#     ngx_module_order=
+if [ $USE_OPENSSL = YES ]; then
+    ngx_module_type=CORE
+    ngx_module_name=ngx_openssl_module
+    ngx_module_incs=
+    ngx_module_deps=src/event/ngx_event_openssl.h
+    ngx_module_srcs="src/event/ngx_event_openssl.c
+                     src/event/ngx_event_openssl_stapling.c"
+    ngx_module_libs=
+    ngx_module_link=YES
+    ngx_module_order=
 
-#     . auto/module
-# fi
-
-#if [ $USE_OPENSSL = YES ]; then
-ngx_module_type=CORE
-ngx_module_name=ngx_nss_module
-ngx_module_incs="/Users/tim/workspace/nss-code/dist/Darwin15.5.0_64_DBG.OBJ/include \
-                 /Users/tim/workspace/nss-code/dist/public/nss"
-ngx_module_deps=src/event/ngx_event_nss.h
-ngx_module_srcs=src/event/ngx_event_nss.c
-ngx_module_libs="-L/Users/tim/workspace/nss-code/dist/Darwin15.5.0_64_DBG.OBJ/lib -lnspr4 -lssl3 -lnss3"
-ngx_module_link=YES
-ngx_module_order=
-
-. auto/module
-#fi
+    . auto/module
+fi
 
 
 if [ $USE_PCRE = YES ]; then

@@ -227,9 +227,9 @@ main(int argc, char *const *argv)
     }
 
     /* STUB */
-//#if (NGX_OPENSSL)
+#if (NGX_OPENSSL)
     ngx_ssl_init(log);
-//#endif
+#endif
 
     /*
      * init_cycle->log is required for signal handlers and
@@ -413,14 +413,14 @@ ngx_show_version_info(void)
 #endif
 
 #if (NGX_SSL)
-        /*if (ngx_strcmp(ngx_ssl_version(), OPENSSL_VERSION_TEXT) == 0) {
+        if (ngx_strcmp(ngx_ssl_version(), OPENSSL_VERSION_TEXT) == 0) {
             ngx_write_stderr("built with " OPENSSL_VERSION_TEXT NGX_LINEFEED);
         } else {
             ngx_write_stderr("built with " OPENSSL_VERSION_TEXT
                              " (running with ");
             ngx_write_stderr((char *) (uintptr_t) ngx_ssl_version());
             ngx_write_stderr(")" NGX_LINEFEED);
-        }*/
+        }
 #ifdef SSL_CTRL_SET_TLSEXT_HOSTNAME
         ngx_write_stderr("TLS SNI support enabled" NGX_LINEFEED);
 #else
