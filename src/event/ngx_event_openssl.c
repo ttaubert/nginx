@@ -18,6 +18,17 @@ typedef struct {
 } ngx_openssl_conf_t;
 
 
+#ifdef TLSEXT_TYPE_application_layer_protocol_negotiation
+static int ngx_ssl_alpn_select(ngx_ssl_conn_t *ssl_conn,
+    const unsigned char **out, unsigned char *outlen, const unsigned char *in,
+    unsigned int inlen, void *arg);
+#endif
+
+#ifdef TLSEXT_TYPE_next_proto_neg
+static int ngx_ssl_npn_advertised(ngx_ssl_conn_t *ssl_conn,
+    const unsigned char **out, unsigned int *outlen, void *arg);
+#endif
+
 static int ngx_ssl_password_callback(char *buf, int size, int rwflag,
     void *userdata);
 static int ngx_ssl_verify_callback(int ok, X509_STORE_CTX *x509_store);
@@ -319,6 +330,91 @@ ngx_ssl_create(ngx_ssl_t *ssl, ngx_uint_t protocols, void *data)
 
     return NGX_OK;
 }
+
+
+ngx_int_t
+ngx_ssl_protocol_negotiation(ngx_conf_t *cf, ngx_ssl_t *ssl, ngx_str_t *data)
+{
+    // Store protocols to offer.
+    ssl->proto_neg.len = data->len;
+    ssl->proto_neg.data = ngx_pstrdup(cf->pool, data);
+    if (ssl->proto_neg.data == NULL) {
+        return NGX_ERROR;
+    }
+
+#ifdef TLSEXT_TYPE_application_layer_protocol_negotiation
+    SSL_CTX_set_alpn_select_cb(ssl->ctx, ngx_ssl_alpn_select, &ssl->proto_neg);
+#endif
+
+#ifdef TLSEXT_TYPE_next_proto_neg
+    SSL_CTX_set_next_protos_advertised_cb(ssl->ctx, ngx_ssl_npn_advertised,
+                                          &ssl->proto_neg);
+#endif
+
+    return NGX_OK;
+}
+
+
+#ifdef TLSEXT_TYPE_application_layer_protocol_negotiation
+
+static int
+ngx_ssl_alpn_select(ngx_ssl_conn_t *ssl_conn, const unsigned char **out,
+    unsigned char *outlen, const unsigned char *in, unsigned int inlen,
+    void *arg)
+{
+    ngx_str_t              *proto_neg = arg;
+
+#if (NGX_DEBUG)
+    unsigned int            i;
+    ngx_connection_t       *c = ngx_ssl_get_connection(ssl_conn);
+
+    for (i = 0; i < inlen; i += in[i] + 1) {
+        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, c->log, 0,
+                       "SSL ALPN supported by client: %*s",
+                       (size_t) in[i], &in[i + 1]);
+    }
+#endif
+
+    if (SSL_select_next_proto((unsigned char **) out, outlen, proto_neg->data,
+                              proto_neg->len, in, inlen)
+        != OPENSSL_NPN_NEGOTIATED)
+    {
+        return SSL_TLSEXT_ERR_NOACK;
+    }
+
+#if (NGX_DEBUG)
+    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, c->log, 0,
+                   "SSL ALPN selected: %*s", (size_t) *outlen, *out);
+#endif
+
+    return SSL_TLSEXT_ERR_OK;
+}
+
+#endif
+
+
+#ifdef TLSEXT_TYPE_next_proto_neg
+
+static int
+ngx_ssl_npn_advertised(ngx_ssl_conn_t *ssl_conn,
+    const unsigned char **out, unsigned int *outlen, void *arg)
+{
+    ngx_str_t         *proto_neg = arg;
+
+#if (NGX_DEBUG)
+    ngx_connection_t  *c;
+
+    c = ngx_ssl_get_connection(ssl_conn);
+    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, c->log, 0, "SSL NPN advertised");
+#endif
+
+    *out = proto_neg->data;
+    *outlen = proto_neg->len;
+
+    return SSL_TLSEXT_ERR_OK;
+}
+
+#endif
 
 
 ngx_int_t

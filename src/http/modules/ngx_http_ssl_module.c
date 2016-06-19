@@ -20,17 +20,6 @@ typedef ngx_int_t (*ngx_ssl_variable_handler_pt)(ngx_connection_t *c,
 #define NGX_HTTP_NPN_ADVERTISE  "\x08http/1.1"
 
 
-#ifdef TLSEXT_TYPE_application_layer_protocol_negotiation
-static int ngx_http_ssl_alpn_select(ngx_ssl_conn_t *ssl_conn,
-    const unsigned char **out, unsigned char *outlen,
-    const unsigned char *in, unsigned int inlen, void *arg);
-#endif
-
-#ifdef TLSEXT_TYPE_next_proto_neg
-static int ngx_http_ssl_npn_advertised(ngx_ssl_conn_t *ssl_conn,
-    const unsigned char **out, unsigned int *outlen, void *arg);
-#endif
-
 static ngx_int_t ngx_http_ssl_static_variable(ngx_http_request_t *r,
     ngx_http_variable_value_t *v, uintptr_t data);
 static ngx_int_t ngx_http_ssl_variable(ngx_http_request_t *r,
@@ -313,103 +302,11 @@ static ngx_http_variable_t  ngx_http_ssl_vars[] = {
 
 static ngx_str_t ngx_http_ssl_sess_id_ctx = ngx_string("HTTP");
 
-
-#ifdef TLSEXT_TYPE_application_layer_protocol_negotiation
-
-static int
-ngx_http_ssl_alpn_select(ngx_ssl_conn_t *ssl_conn, const unsigned char **out,
-    unsigned char *outlen, const unsigned char *in, unsigned int inlen,
-    void *arg)
-{
-    unsigned int            srvlen;
-    unsigned char          *srv;
-#if (NGX_DEBUG)
-    unsigned int            i;
-#endif
 #if (NGX_HTTP_V2)
-    ngx_http_connection_t  *hc;
+static ngx_str_t ngx_http_ssl_proto_neg_h2 = ngx_string(
+    NGX_HTTP_V2_ALPN_ADVERTISE NGX_HTTP_NPN_ADVERTISE);
 #endif
-#if (NGX_HTTP_V2 || NGX_DEBUG)
-    ngx_connection_t       *c;
-
-    c = ngx_ssl_get_connection(ssl_conn);
-#endif
-
-#if (NGX_DEBUG)
-    for (i = 0; i < inlen; i += in[i] + 1) {
-        ngx_log_debug2(NGX_LOG_DEBUG_HTTP, c->log, 0,
-                       "SSL ALPN supported by client: %*s",
-                       (size_t) in[i], &in[i + 1]);
-    }
-#endif
-
-#if (NGX_HTTP_V2)
-    hc = c->data;
-
-    if (hc->addr_conf->http2) {
-        srv =
-           (unsigned char *) NGX_HTTP_V2_ALPN_ADVERTISE NGX_HTTP_NPN_ADVERTISE;
-        srvlen = sizeof(NGX_HTTP_V2_ALPN_ADVERTISE NGX_HTTP_NPN_ADVERTISE) - 1;
-
-    } else
-#endif
-    {
-        srv = (unsigned char *) NGX_HTTP_NPN_ADVERTISE;
-        srvlen = sizeof(NGX_HTTP_NPN_ADVERTISE) - 1;
-    }
-
-    if (SSL_select_next_proto((unsigned char **) out, outlen, srv, srvlen,
-                              in, inlen)
-        != OPENSSL_NPN_NEGOTIATED)
-    {
-        return SSL_TLSEXT_ERR_NOACK;
-    }
-
-    ngx_log_debug2(NGX_LOG_DEBUG_HTTP, c->log, 0,
-                   "SSL ALPN selected: %*s", (size_t) *outlen, *out);
-
-    return SSL_TLSEXT_ERR_OK;
-}
-
-#endif
-
-
-#ifdef TLSEXT_TYPE_next_proto_neg
-
-static int
-ngx_http_ssl_npn_advertised(ngx_ssl_conn_t *ssl_conn,
-    const unsigned char **out, unsigned int *outlen, void *arg)
-{
-#if (NGX_HTTP_V2 || NGX_DEBUG)
-    ngx_connection_t  *c;
-
-    c = ngx_ssl_get_connection(ssl_conn);
-    ngx_log_debug0(NGX_LOG_DEBUG_HTTP, c->log, 0, "SSL NPN advertised");
-#endif
-
-#if (NGX_HTTP_V2)
-    {
-    ngx_http_connection_t  *hc;
-
-    hc = c->data;
-
-    if (hc->addr_conf->http2) {
-        *out =
-            (unsigned char *) NGX_HTTP_V2_NPN_ADVERTISE NGX_HTTP_NPN_ADVERTISE;
-        *outlen = sizeof(NGX_HTTP_V2_NPN_ADVERTISE NGX_HTTP_NPN_ADVERTISE) - 1;
-
-        return SSL_TLSEXT_ERR_OK;
-    }
-    }
-#endif
-
-    *out = (unsigned char *) NGX_HTTP_NPN_ADVERTISE;
-    *outlen = sizeof(NGX_HTTP_NPN_ADVERTISE) - 1;
-
-    return SSL_TLSEXT_ERR_OK;
-}
-
-#endif
+static ngx_str_t ngx_http_ssl_proto_neg_h1 = ngx_string(NGX_HTTP_NPN_ADVERTISE);
 
 
 static ngx_int_t
@@ -541,6 +438,7 @@ ngx_http_ssl_create_srv_conf(ngx_conf_t *cf)
 static char *
 ngx_http_ssl_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
 {
+    ngx_str_t *proto_neg = &ngx_http_ssl_proto_neg_h1;
     ngx_http_ssl_srv_conf_t *prev = parent;
     ngx_http_ssl_srv_conf_t *conf = child;
 
@@ -665,14 +563,17 @@ ngx_http_ssl_merge_srv_conf(ngx_conf_t *cf, void *parent, void *child)
 
 #endif
 
-#ifdef TLSEXT_TYPE_application_layer_protocol_negotiation
-    SSL_CTX_set_alpn_select_cb(conf->ssl.ctx, ngx_http_ssl_alpn_select, NULL);
-#endif
+#if (NGX_HTTP_V2)
+    {
+        ngx_connection_t *c = ngx_ssl_get_connection(conf->ssl.ctx);
+        ngx_http_connection_t *hc = c->data;
 
-#ifdef TLSEXT_TYPE_next_proto_neg
-    SSL_CTX_set_next_protos_advertised_cb(conf->ssl.ctx,
-                                          ngx_http_ssl_npn_advertised, NULL);
+        if (hc->addr_conf->http2) {
+            proto_neg = &ngx_http_ssl_proto_neg_h2;
+        }
+    }
 #endif
+    ngx_ssl_protocol_negotiation(cf, &conf->ssl, proto_neg);
 
     cln = ngx_pool_cleanup_add(cf->pool, 0);
     if (cln == NULL) {
